@@ -7,12 +7,24 @@ const fetch = require('node-fetch');
 const { URLSearchParams } = require('node:url');
 
 
-const createFolder = require('./createFolder')
+const dropbox = require('../utils/dropbox')
 ///
 var ACCESS_TOKEN = process.env.DROPBOX_ACCESS_TK;
-//var dbx = new Dropbox({ accessToken: ACCESS_TOKEN });
-let tokenFromRefresh; // THIS VARIABLE WILL STORE THE ACCESS_TOKEN GIVEN FROM THE REFRESH
 
+//let tokenFromRefresh; 
+
+const folders = [
+  `ACTION_PLANS`,
+  `CBRA`,
+  `CONSENT`,
+  `IDG`,
+  `INTAKE`,
+  `LINKAGE_NAVIGATION`,
+  `MEDICAL`,
+  `MISCELLANEOUS`,
+  `SUPPORT_GROUPS`,
+  `TICKLER_UPDATES`,
+]
 
 
 const DBXCLIENT_ID = process.env.DBX_CLIENT_ID;
@@ -22,68 +34,6 @@ const config = {
     clientId: DBXCLIENT_ID,
     clientSecret: CLIENT_SECRET,
 };
-const dbx = new Dropbox(config);
-////
-
-
-const connectDropbox = async ()=>{
-  const clientIdSecretEncoded = buffer.from(`${DBXCLIENT_ID}:${CLIENT_SECRET}`).toString('base64');
-    const urlencoded = new URLSearchParams();
-    urlencoded.append("grant_type", "refresh_token");
-    urlencoded.append("refresh_token", process.env.DBX_REFRESH_TOKEN);
-    const requestOptions = {
-       method: 'POST',
-        headers: {
-            "Authorization": `Basic ${clientIdSecretEncoded}`,
-            "Content-Type": "application/x-www-form-urlencoded"
-        },
-        body: urlencoded,
-        redirect: 'follow'
-    };
-    try {
-      const res= fetch("https://api.dropbox.com/oauth2/token", requestOptions)
-      const response = await res
-      const response1 = await response.json()
-      console.log("response1",response1)
-      const accessTokenResult = await response1.access_token
-      tokenFromRefresh =  accessTokenResult
-      console.log("tokenFromRefresh",tokenFromRefresh)
-      return tokenFromRefresh
-
-     }
-      catch{
-          (error => console.log('error from connectDropboxA', error))}
-  }
-
-
-
-
-const createClientSharedMainFolder = async (clientID,folderName)=>{
-console.log("creating",folderName)
-  try {
-  const getData= await axios({
-    method:'post',
-    url:'https://api.dropboxapi.com/2/sharing/share_folder',
-    headers:{
-      'Content-Type':'application/json',
-      authorization: `Bearer ${ACCESS_TOKEN}`,
-    },
-    data:{
-      "access_inheritance": "inherit",
-      "acl_update_policy": "editors",
-      "force_async": false,
-      "member_policy": "anyone",
-      "path": `/clients/${clientID}/${clientID}_${folderName.toUpperCase()}`,
-      "shared_link_policy": "anyone"
-  }
-  })
-  const dataResponse = await getData 
-  const dataStatus = await dataResponse.statusText==='OK' ? addClientFolder(dataResponse.data.preview_url,folderName,clientID): createClientSharedMainFolder(clientID,folderName)
-  }  catch(e){
-    console.log("an error ocurred sharing ", e)
-      }
-
-}
 
 
 
@@ -177,6 +127,9 @@ module.exports = {
       services_action_plan.goal1completed ,
       services_action_plan.goal2completed ,
       services_action_plan.goal3completed,
+      services_action_plan.goal1summary ,
+      services_action_plan.goal2summary ,
+      services_action_plan.goal3summary,
       services_action_plan.goal1completiondate  ,
       services_action_plan.goal2completiondate ,
       services_action_plan.goal3completiondate,
@@ -239,12 +192,33 @@ module.exports = {
       services_action_plan.goal1completed ,
       services_action_plan.goal2completed ,
       services_action_plan.goal3completed,
+      services_action_plan.goal1summary ,
+      services_action_plan.goal2summary ,
+      services_action_plan.goal3summary,
       services_action_plan.goal1completiondate  ,
       services_action_plan.goal2completiondate ,
       services_action_plan.goal3completiondate,
       services_action_plan.planstartdate,
       progress_note.id as progress_note_id,
-      progress_note.progressnotedate as progressnotedate  
+      progress_note.progressnotedate as progressnotedate,
+      progress_note.developmentactionplan as progressnote_developmentactionplan,
+      progress_note.cd4vllabreport as cd4vllabreport,
+      progress_note.transportationcoordination as transportationcoordination,
+      progress_note.translationinterpretation as translationinterpretation,
+      progress_note.comprehensivebehavioralriskassessment as comprehensivebehavioralriskassessment,
+      progress_note.ticklerupdate as ticklerupdate,
+      progress_note.treatmenteducation as treatmenteducation,
+      progress_note.preventioncounselling as preventioncounselling,
+      progress_note.supportivecounselling as supportivecounselling,
+      progress_note.escort as escort,
+      progress_note.caseclosuredischarge as caseclosuredischarge,
+      progress_note.linkagetoservices as linkagetoservices,
+      progress_note.supportgroups as supportgroups,
+      progress_note.otherassistance as otherassistance, 
+      progress_note.implementationactionplan as implementationactionplan,
+      progress_note.housingassistance as housingassistance,
+      progress_note.benefitsassistance as benefitsassistance,
+      progress_note.employmentassistance as employmentassistance 
       from clients 
       full outer join msa_form on clients.clientid=msa_form.clientid 
       full outer join services_action_plan on clients.clientid = services_action_plan.clientid
@@ -256,7 +230,7 @@ module.exports = {
 
       const allData = await db.query(query);
       const response = allData.rows;
-      console.log("respoinse",response)
+      console.log("response",response)
       let newClient={}
       let progressnotes=[]
       let pn={}
@@ -290,8 +264,36 @@ module.exports = {
         newClient.goal2completiondate=client.goal2completiondate
         newClient.goal3completiondate=client.goal3completiondate
         newClient.planstartdate=client.planstartdate
-        pn={id:client.progress_note_id,date:client.progressnotedate}
-        progressnotes.push(pn)
+        newClient.goal1summary =client.goal1summary?1:0 
+      newClient.goal2summary =client.goal2summary ?1:0
+      newClient.goal3summary=client.goal3summary?1:0
+        if(client.progress_note_id ===null || client.progress_note_id ===''){
+          
+          progressnotes=[]
+        } else {
+          pn={id:client.progress_note_id,date:client.progressnotedate,
+            developmentactionplan:client.progressnote_developmentactionplan,
+            cd4vllabreport:client.cd4vllabreport,
+            transportationcoordination:client.transportationcoordination,
+            translationinterpretation:client.translationinterpretation,
+            comprehensivebehavioralriskassessment:client.comprehensivebehavioralriskassessment,
+            ticklerupdate:client.ticklerupdate,
+            treatmenteducation:client.treatmenteducation,
+            preventioncounselling:client.preventioncounselling,
+            supportivecounselling:client.supportivecounselling,
+            escort:client.escort,
+            caseclosuredischarge:client.caseclosuredischarge,
+            linkagetoservices:client.linkagetoservices,
+            supportgroups:client.supportgroups,
+            otherassistance:client.otherassistance,
+            implementationactionplan:client.implementationactionplan,
+            housingassistance:client.housingassistance,
+            benefitsassistance:client.benefitsassistance,
+            employmentassistance:client.employmentassistance
+          
+          }
+          progressnotes.push(pn)
+        }
         newClient.progressnotes=progressnotes
         })
 
@@ -308,6 +310,7 @@ module.exports = {
 
   },
   createClient: async (req, res) => {
+    console.log("create client",req.body)
     let {
       clientFirstName,
       clientLastName,
@@ -333,41 +336,43 @@ module.exports = {
       clientActive = "0";
     }
     checkSSN(clientID);
-    function checkSSN(clientID) {
+   async function checkSSN(clientID) {
       const query1 = {
         text: "select * from clients where clientid=$1",
-        values: [clientID],
+        values: [clientID]
       };
-
-      db.query(query1)
-        .then((data) => {
-          if (data.rows.length > 0) {
-            res.status(400).send("Client is already registered");
-          } else {
-            const query = {
-              text: "INSERT INTO clients(clientfirstname,clientlastname,clientssn,clientactive,clienthcwid,clienthcwname,clienthcwlastname,clientid,clientdatecreated,clienthcwemail,clientcategory) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *",
-              values: [
-                nameCapitalized,
-                lastnameCapitalized,
-                clientSSN,
-                clientActive,
-                clientHCWID,
-                clientHCWName,
-                clientHCWLastname,
-                clientID,
-                clientDateCreated,
-                clientHCWemail,
-                clientCategory
-              ],
-            };
-          
-            db.query(query)
-              .then((data) => res.status(200).json(data.rows[0]))
-              .then(newresponse =>connectDropboxAndCreateFolders(DBXCLIENT_ID,clientID))
-              .catch((e) => console.error(e.stack))
-          }
-        })
-        .catch((e) => console.log(e));
+      try {
+        const data = await db.query(query1)
+        
+        if (data.rows.length > 0) {
+          res.status(400).send("Client is already registered");
+        } else {
+          const query = {
+            text: "INSERT INTO clients(clientfirstname,clientlastname,clientssn,clientactive,clienthcwid,clienthcwname,clienthcwlastname,clientid,clientdatecreated,clienthcwemail,clientcategory) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *",
+            values: [
+              nameCapitalized, lastnameCapitalized, clientSSN, clientActive, clientHCWID, clientHCWName, clientHCWLastname, clientID, clientDateCreated,clientHCWemail,clientCategory
+            ],
+          };
+        
+          const response = await db.query(query)
+          //const res = await res.status(200).json(data.rows[0])
+          const newresponse = await dropbox.connectToDropbox(DBXCLIENT_ID,clientID)
+          const createFolders = await dropbox.createAllFolders(clientID)
+          const action_plans = await dropbox.shareFolder(clientID,folders[0])
+          const cbra = await dropbox.shareFolder(clientID,folders[1])
+          const consent = await dropbox.shareFolder(clientID,folders[2])
+          const idg = await dropbox.shareFolder(clientID,folders[3])
+          const intake = await dropbox.shareFolder(clientID,folders[4])
+          const linkage_navigation = await dropbox.shareFolder(clientID,folders[5])
+          const medical = await dropbox.shareFolder(clientID,folders[6])
+          const miscellaneous = await dropbox.shareFolder(clientID,folders[7])
+          const support_groups = await dropbox.shareFolder(clientID,folders[8])
+          const tickler_updates = await dropbox.shareFolder(clientID,folders[9])
+          const responsestatus= await res.status(200).send({statusText:'OK', message:"client created"})
+        }
+      } catch (e){
+        res.status(400).send({message:"an error occurred while registering a new client",response:e})
+      }
     }
   },
   updateClient:async(req,res)=>{
@@ -464,56 +469,4 @@ module.exports = {
 };
 
 
-const connectDropboxAndCreateFolders=(DBXCLIENT_ID,clientID)=>{
-  console.log("DBXCLIENT_ID",DBXCLIENT_ID)
-  console.log("clientID",clientID)
-
-  //GENERATE CODE FROM CLIENTID AND CLIENTSECRET TO BE USED TO REQUEST THE ACCESSTOKEN FROM REFRESH 
-const clientIdSecretEncoded = buffer.from(`${DBXCLIENT_ID}:${CLIENT_SECRET}`).toString('base64');
-console.log("clientIdSecretEncoded",clientIdSecretEncoded)
-
-  const urlencoded = new URLSearchParams();
-  urlencoded.append("grant_type", "refresh_token");
-  urlencoded.append("refresh_token", process.env.DBX_REFRESH_TOKEN);
-  console.log("urlencoded",urlencoded)
-  const requestOptions = {
-     method: 'POST',
-      headers: {
-          "Authorization": `Basic ${clientIdSecretEncoded}`,
-          "Content-Type": "application/x-www-form-urlencoded"
-      },
-      body: urlencoded,
-      redirect: 'follow'
-  };
-  fetch("https://api.dropbox.com/oauth2/token", requestOptions)
-      .then(response => response.json())
-      .then(result => newAccessToken = result)
-      .then(accessTokenResult => {
-        console.log("accessTokenResult",accessTokenResult)
-          tokenFromRefresh = accessTokenResult.access_token // ADDING TO tokenFromRefresh (GLOBAL VARIABLE) THE ACCESS TOKEN THANKS TO REFRESH
-          console.log("tokenfrom",tokenFromRefresh)
-          createFolders(tokenFromRefresh, clientID)/// shoul be await 
-      })
-      .then(result => console.log(result))
-      .catch(error => console.log('error from connectDropboxAndCreateFolders', error))
-}
-
-
-//>>> FUNCTION THAT CREATE EACH FOLDER : crear cada carpeta  <<<<<< 
-const createFolders =  async (token, CLIENT_ID) => {
-  console.log("desde createFolrder token clientID",token,CLIENT_ID)
-  // In the CreateFolder file (at the end), it is the function that, I believe, makes the update in the database  
- //await createFolder.createFolderIntake(token, CLIENT_ID)
- await createFolder.createFolderIntakeForm(token, CLIENT_ID)
- await createFolder.createFolderCBRA(token, CLIENT_ID)
- await createFolder.createFolderMiscellaneous(token, CLIENT_ID)
- await createFolder.createFolderMedical(token, CLIENT_ID)
- await createFolder.createFolderActionPlans(token, CLIENT_ID)
- await createFolder.createFolderConsent(token, CLIENT_ID)
- await createFolder.createFolderLinkageNavigation(token, CLIENT_ID)
- await createFolder.createFolderTicklerUpdates(token, CLIENT_ID)
- await createFolder.createFolderSupportGroups(token, CLIENT_ID)
- await createFolder.createFolderIDG(token, CLIENT_ID)
-
-}
 

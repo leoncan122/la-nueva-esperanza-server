@@ -27,11 +27,11 @@ module.exports = {
       // full outer join progress_note on progress_note.clientid = clients.clientid  
       // where clients.clientid=$1 order by id asc
       // limit 1`,
-      text:`select msa_form.*,clients.*,progress_note.id as progressnoteid,progress_note.progressnotedate as progressnotedate from msa_form 
+      text:`select msa_form.*,clients.*,progress_note.id as progressnoteid,progress_note.progressnotedate as progressnotedate,services_action_plan.planstartdate as sapplanstartdate from msa_form 
       inner join clients on msa_form.clientid =clients.clientid 
-      full outer join progress_note on progress_note.clientid = clients.clientid  
-      where clients.clientid=$1 
-      limit 1`,
+      full outer join progress_note on progress_note.clientid = clients.clientid
+      full outer join services_action_plan on services_action_plan.clientid = clients.clientid  
+      where clients.clientid=$1 order by progress_note.progressnotedate desc limit 1`,
       values: [clientid],
     };
     try {
@@ -1853,8 +1853,7 @@ where clientUniqueId=$82`,
        SupportGroupsUploadDate=$109,
        IDGFormReviewed=$110,
        IDGFormIssues=$111,
-       IDGFormUploadDate=$112,
-       clientUniqueId=$113
+       IDGFormUploadDate=$112
        where clientUniqueId=$113`,
            values: [ 
        clientId,
@@ -1970,7 +1969,6 @@ where clientUniqueId=$82`,
        IDGFormIssues,
        IDGFormUploadDate,
        clientUniqueId
-      
      ],
          }
          db
@@ -1978,7 +1976,7 @@ where clientUniqueId=$82`,
            .then((response) =>{
             
              res.status(200).send({statusText:"OK"})
-           //  console.log("msa form updated",response)
+             console.log("msa form updated",response)
            }
            )
 
@@ -1991,15 +1989,15 @@ where clientUniqueId=$82`,
   updateMsaFormFromProgressNote: async (req, res) => {
     console.log("req.body update msa from pn",req.body)
     
-    for (const property in req.body.clientData) {
-      if(req.body.clientData[property]===true){
-        req.body.clientData[property]=1
+    for (const property in req.body.msaData) {
+      if(req.body.msaData[property]===true){
+        req.body.msaData[property]=1
       }
-      if(req.body.clientData[property]===false){
-        req.body.clientData[property]=0
+      if(req.body.msaData[property]===false){
+        req.body.msaData[property]=0
       }
-      if(req.body.clientData[property]===""){
-        req.body.clientData[property]=null
+      if(req.body.msaData[property]===""){
+        req.body.msaData[property]=null
       }
      
     } 
@@ -2069,9 +2067,9 @@ InternalReferralInformation,
 LinkageRetentionAdherenceForms,
 InternalReferralInformationDate,
 LinkageRetentionAdherenceFormsDate,
-HNSReadinessFormDate
-
-    } = req.body.clientData;
+HNSReadinessFormDate,
+ProgressNoteReviewed
+    } = req.body.msaData;
 
     try {
       const query = await {
@@ -2142,7 +2140,8 @@ InternalReferralInformation=$62,
 LinkageRetentionAdherenceForms=$63,
 InternalReferralInformationDate=$64,
 LinkageRetentionAdherenceFormsDate=$65,
-HNSReadinessFormDate=$66   
+HNSReadinessFormDate=$66,
+ProgressNoteReviewed=$67  
 where clientId=$1`,
         values: [
           clientId,
@@ -2210,7 +2209,8 @@ where clientId=$1`,
 LinkageRetentionAdherenceForms,
 InternalReferralInformationDate,
 LinkageRetentionAdherenceFormsDate,
-HNSReadinessFormDate   
+HNSReadinessFormDate,
+ProgressNoteReviewed   
         ],
       };
       db
